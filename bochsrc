@@ -1,0 +1,54 @@
+
+# Configuration file for bochs.
+#
+# See user documentation on http://bochs.sourceforge.net/ for 
+# documentation on these and more configuration directives.
+
+###################### DEBUGGING ###############################
+# Uncomment this line to enable debugging with gdb.
+# gdbstub: enabled=1, port=1234
+#
+# Start gdb, then do
+#  (gdb) target remote localhost:1234
+#
+# You can save gdb startup commands like the one above in a
+# .gdbinit file in your home directory to avoid having to write
+# them each time you initiate a debugging session. 
+################################################################
+
+# BIOS and VGABIOS images
+romimage:    file=bios/Seabios.bin
+vgaromimage: file=bios/VGABIOS-lgpl-latest
+
+# Use UHCI standard to access USB 
+plugin_ctrl: usb_uhci=1, serial=1
+
+display_library: x
+
+# The UHCI chip is embedded  in i440fx chip
+# Seabios requires pcivga adapter
+pci: enabled=1, chipset=i440fx, slot1=pcivga
+vga: extension=vbe, update_freq=1
+
+# Enable UHCI chip and attach the image file on port 1
+#  and the keypad on port 2 to test usb keyboard support
+usb_uhci: enabled=1, port1=disk:image, port2=keypad
+
+cpu: count=1, ips=1000000, reset_on_triple_fault=1
+megs: 256
+
+# Forwards data written to IO port 0x3f8 (COM1) to the serial.out file
+# Use the rsprintf() function to write to this IO port (works for P2-P6)
+com1: enabled=1, mode=file, dev=serial.out
+
+# Bochs report levels
+panic: action=ask
+error: action=ignore
+info: action=report
+debug: action=ignore
+
+log: /tmp/blanks-bochs-log
+debugger_log: /dev/null
+
+keyboard_paste_delay: 100000
+
