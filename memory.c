@@ -50,6 +50,26 @@ uint32_t get_tab_idx(uint32_t vaddr){
 
 /* TODO: Returns physical address of page number i */
 uint32_t* page_addr(int i){
+  page_map_entry_t page_entry = page_map[i];
+
+  uint32_t vaddr = page_entry.vaddr;
+
+  uint32_t dir_index = get_dir_idx(vaddr);
+
+  uint32_t tab_index = get_tab_idx(vaddr);
+
+  uint32_t* dir_ptr = kernel_pdir + (sizeof(uint32_t) * dir_index);
+
+  uint32_t tab_ptr = *dir_ptr;
+
+  uint32_t page_ptr = tab_ptr +  (sizeof(uint32_t) * tab_index);
+
+  uint32_t page = *page_ptr;
+
+  uint32_t physical_addr = page + (vaddr&PAGE_MASK);
+
+  return physical_addr;
+
 
 }
 
