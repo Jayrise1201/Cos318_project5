@@ -50,27 +50,34 @@ uint32_t get_tab_idx(uint32_t vaddr){
 
 /* TODO: Returns physical address of page number i */
 uint32_t* page_addr(int i){
-  page_map_entry_t page_entry = page_map[i];
 
-  uint32_t vaddr = page_entry.vaddr;
+  // ? is this right?
+  return (uint32_t*)(MEM_START + i * PAGE_SIZE);
 
-  uint32_t dir_index = get_dir_idx(vaddr);
+  // page_map_entry_t page_entry = page_map[i];
 
-  uint32_t tab_index = get_tab_idx(vaddr);
+  // uint32_t vaddr = page_entry.vaddr;
 
-  uint32_t* dir_ptr = kernel_pdir + (sizeof(uint32_t) * dir_index);
+  // uint32_t dir_index = get_dir_idx(vaddr);
 
-  uint32_t tab_ptr = *dir_ptr;
+  // uint32_t tab_index = get_tab_idx(vaddr);
 
-  uint32_t page_ptr = tab_ptr +  (sizeof(uint32_t) * tab_index);
+  // // uint32_t* dir_ptr = kernel_pdir + (sizeof(uint32_t) * dir_index);
 
-  uint32_t page = *page_ptr;
+  // // uint32_t tab_ptr = *dir_ptr;
 
-  uint32_t physical_addr = page + (vaddr&PAGE_MASK);
+  // // uint32_t page_ptr = tab_ptr +  (sizeof(uint32_t) * tab_index);
 
-  return physical_addr;
+  // // uint32_t page = *page_ptr;
 
+  // // similar format from set_ptab_entry_flags
+  // uint32_t dir_entry = kernel_pdir[dir_index];
+  // uint32_t tab_ptr = (uint32_t *) (dir_entry & PE_BASE_ADDR_MASK);
+  // uint32_t page = tab_ptr[tab_index];
 
+  // uint32_t physical_addr = page + (vaddr & PAGE_MASK);
+
+  // return physical_addr;
 }
 
 /* Set flags in a page table entry to 'mode' */
@@ -131,6 +138,26 @@ void insert_ptab_dir(uint32_t * dir, uint32_t *tab, uint32_t vaddr,
  */
 int page_alloc(int pinned){
   
+  int non_pinned_index = -1;
+  for(int i = 0; i < PAGEABLE_PAGES; i++){
+    // find a free page_map entry to allocate
+    if(page_map[i].free){
+      page_map[i].pinned = pinned;
+      page_map[i].free = FALSE;
+      return i;
+    }
+    // also track non pinned pages so we can swap out if necessary
+    if(!page_map[i].pinned){
+      non_pinned_index = i;
+    }
+  }
+
+  // nothing available in page_map so swap out
+  page_swap_out(non_pinned_index);
+
+  page_map[non_pinned_index].pinned = pinned;
+  page_map[non_pinned_index].free = FALSE;
+  return non_pinned_index;
 }
 
 /* TODO: Set up kernel memory for kernel threads to run.
@@ -139,7 +166,35 @@ int page_alloc(int pinned){
  * supposed to set up the page directory and page tables for the kernel.
  */
 void init_memory(void){
- 
+  // set kernel page directory
+  // maybe similar to page table?
+  kernel_pdir = (uint32_t*)(MEM_START);
+  
+  page_map[0].vaddr = kernel_pdir; 
+  page_map[0].free = FALSE;
+  page_map[0].pinned = TRUE;
+
+  // setup kernel page tables
+  for(int i = 0; i < N_KERNEL_PTS; i++){
+    uint32_t vaddr = MEM_START + PAGE_SIZE * (i+1);
+    uint32_t mode = 0;
+    mode |= (1 << PE_P) | (1 << PE_RW);
+    // identity map for physical and virtual for kernel
+    init_ptab_entry(kernel_ptabs[i], vaddr, vaddr, mode);
+    // insert into page directory?
+    insert_ptab_dir(kernel_pdir, kernel_ptabs[i], vaddr, mode);
+
+    page_map[1+i].vaddr = vaddr; 
+    page_map[1+i].free = FALSE;
+    page_map[1+i].pinned = TRUE;
+  }
+
+  // setup rest of page_map
+  for(int i = N_KERNEL_PTS+1; i < PAGEABLE_PAGES; i++){
+    page_map[i].free = TRUE;
+    page_map[i].pinned = FALSE;
+  }
+
 }
 
 
