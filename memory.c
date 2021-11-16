@@ -143,6 +143,8 @@ int page_alloc(int pinned){
     if(page_map[i].free){
       page_map[i].pinned = pinned;
       page_map[i].free = FALSE;
+
+      // zero out the vaddr? or the paddr?
       bzero(&page_map[i], PAGE_SIZE);
       return i;
     }
@@ -168,20 +170,24 @@ int page_alloc(int pinned){
 void init_memory(void){
   // set kernel page directory
   // maybe similar to page table?
+  // what should this be? 
   kernel_pdir = (uint32_t*)(MEM_START);
-  
+  // should we put in page_map? is page_map physical mem??
   page_map[0].vaddr = kernel_pdir; 
   page_map[0].free = FALSE;
   page_map[0].pinned = TRUE;
 
   // setup kernel page tables
   for(int i = 0; i < N_KERNEL_PTS; i++){
+    // does vaddr need to be constructed ??
     uint32_t vaddr = MEM_START + PAGE_SIZE * (i+1);
     uint32_t mode = 0;
     mode |= (1 << PE_P) | (1 << PE_RW);
-    // identity map for physical and virtual for kernel
+
+    // page directory, page table, page data structures are same??
+    // identity map for physical and virtual for kernel??
     init_ptab_entry(kernel_ptabs[i], vaddr, vaddr, mode);
-    // insert into page directory?
+    // insert into page directory???
     insert_ptab_dir(kernel_pdir, kernel_ptabs[i], vaddr, mode);
 
     page_map[1+i].vaddr = vaddr; 
@@ -190,6 +196,7 @@ void init_memory(void){
   }
 
   // setup rest of page_map
+  // necessary or not?
   for(int i = N_KERNEL_PTS+1; i < PAGEABLE_PAGES; i++){
     page_map[i].free = TRUE;
     page_map[i].pinned = FALSE;
@@ -202,13 +209,15 @@ void init_memory(void){
  * user process or thread. */
 void setup_page_table(pcb_t * p){
 
-  int page_index = page_alloc(1);
+  // get a location to put a new page directory
+  int page_index = page_alloc(TRUE);
 
   // ASSUME pcb->page_directory is a physical address
   p->page_directory = page_addr(page_index);
 
   // setup page tables for the page directory
   for(int i = 0; i < N_KERNEL_PTS; i++){
+    // does vaddr need to be constructed ??
     uint32_t vaddr = MEM_START + PAGE_SIZE * (i+1);  /// CHECK IS THIS CORRECT ???
     uint32_t mode = 0;
     mode |= (1 << PE_P) | (1 << PE_RW);
