@@ -144,7 +144,7 @@ int page_alloc(int pinned){
       page_map[i].pinned = pinned;
       page_map[i].free = FALSE;
 
-      // zero out the vaddr? or the paddr?
+      // zero out the memory at paddr 
       bzero(&page_map[i], PAGE_SIZE);
       return i;
     }
@@ -158,6 +158,7 @@ int page_alloc(int pinned){
   page_map[page_swap_index].pinned = pinned;
   page_map[page_swap_index].free = FALSE;
 
+  // zero out here too at paddr
   bzero(&page_map[i], PAGE_SIZE);
   return page_swap_index;
 }
@@ -171,6 +172,9 @@ void init_memory(void){
   // set kernel page directory
   // maybe similar to page table?
   // what should this be? 
+
+  // allocate a page
+  // then physical memory address is pdir
   kernel_pdir = (uint32_t*)(MEM_START);
   // should we put in page_map? is page_map physical mem??
   page_map[0].vaddr = kernel_pdir; 
@@ -179,6 +183,15 @@ void init_memory(void){
 
   // setup kernel page tables
   for(int i = 0; i < N_KERNEL_PTS; i++){
+
+    // allocate page
+    // set the physical memeory entry in array (like pdir)
+    // kernel_ptabs[i] = physical addr
+
+    // set up entry in pdir for each table (needs mode), use insert_ptab_dir
+
+
+
     // does vaddr need to be constructed ??
     uint32_t vaddr = MEM_START + PAGE_SIZE * (i+1);
     uint32_t mode = 0;
@@ -186,7 +199,7 @@ void init_memory(void){
 
     // page directory, page table, page data structures are same??
     // identity map for physical and virtual for kernel??
-    init_ptab_entry(kernel_ptabs[i], vaddr, vaddr, mode);
+    init_ptab_entry(kernel_ptabs[i], vaddr, vaddr, mode); // not needed
     // insert into page directory???
     insert_ptab_dir(kernel_pdir, kernel_ptabs[i], vaddr, mode);
 
@@ -195,6 +208,8 @@ void init_memory(void){
     page_map[1+i].pinned = TRUE;
   }
 
+
+  // do at beginning of function over all page_map
   // setup rest of page_map
   // necessary or not?
   for(int i = N_KERNEL_PTS+1; i < PAGEABLE_PAGES; i++){
@@ -209,15 +224,23 @@ void init_memory(void){
  * user process or thread. */
 void setup_page_table(pcb_t * p){
 
+  // special case- user process will have an entry in its dir that points to kernel table
+
+  // similar to init_memory
+
   // get a location to put a new page directory
   int page_index = page_alloc(TRUE);
-
-  // ASSUME pcb->page_directory is a physical address
+ 
+  // ASSUME pcb->page_directory is a physicalal address  - yes
   p->page_directory = page_addr(page_index);
+
+  // set up two page tables for each user process 
+  // one for code and data, one for stack
 
   // setup page tables for the page directory
   for(int i = 0; i < N_KERNEL_PTS; i++){
     // does vaddr need to be constructed ??
+    // vaddr PROCESS_START, PROCESS_STACK
     uint32_t vaddr = MEM_START + PAGE_SIZE * (i+1);  /// CHECK IS THIS CORRECT ???
     uint32_t mode = 0;
     mode |= (1 << PE_P) | (1 << PE_RW);
