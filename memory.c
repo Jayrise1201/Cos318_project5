@@ -137,27 +137,27 @@ void insert_ptab_dir(uint32_t * dir, uint32_t *tab, uint32_t vaddr,
  * Swap out a page if no space is available. 
  */
 int page_alloc(int pinned){
-  
-  int non_pinned_index = -1;
+
   for(int i = 0; i < PAGEABLE_PAGES; i++){
     // find a free page_map entry to allocate
     if(page_map[i].free){
       page_map[i].pinned = pinned;
       page_map[i].free = FALSE;
+      bzero(&page_map[i], PAGE_SIZE);
       return i;
     }
-    // also track non pinned pages so we can swap out if necessary
-    if(!page_map[i].pinned){
-      non_pinned_index = i;
-    }
+
   }
 
   // nothing available in page_map so swap out
-  page_swap_out(non_pinned_index);
+  int page_swap_index = page_replacement_policy();
+  page_swap_out(page_swap_index);
 
-  page_map[non_pinned_index].pinned = pinned;
-  page_map[non_pinned_index].free = FALSE;
-  return non_pinned_index;
+  page_map[page_swap_index].pinned = pinned;
+  page_map[page_swap_index].free = FALSE;
+
+  bzero(&page_map[i], PAGE_SIZE);
+  return page_swap_index;
 }
 
 /* TODO: Set up kernel memory for kernel threads to run.
@@ -201,7 +201,28 @@ void init_memory(void){
 /* TODO: Set up a page directory and page table for a new 
  * user process or thread. */
 void setup_page_table(pcb_t * p){
-  
+
+  int page_index = page_alloc(1);
+
+  // ASSUME pcb->page_directory is a physical address
+  p->page_directory = page_addr(page_index);
+
+  // setup page tables for the page directory
+  for(int i = 0; i < N_KERNEL_PTS; i++){
+    uint32_t vaddr = MEM_START + PAGE_SIZE * (i+1);  /// CHECK IS THIS CORRECT ???
+    uint32_t mode = 0;
+    mode |= (1 << PE_P) | (1 << PE_RW);
+    // identity map for physical and virtual for kernel
+    uint32_t page_table_addr = p->page_directory + (PAGE_SIZE * (i+1));  
+    init_ptab_entry(page_table_addr, vaddr, vaddr, mode);
+
+    // insert into page directory?
+    insert_ptab_dir(kernel_pdir, kernel_ptabs[i], vaddr, mode);
+
+    page_map[1+i].vaddr = vaddr; 
+    page_map[1+i].free = FALSE;
+    page_map[1+i].pinned = TRUE;
+  }
 }
 
 /* TODO: Swap into a free page upon a page fault.
@@ -209,7 +230,27 @@ void setup_page_table(pcb_t * p){
  * Should handle demand paging.
  */
 void page_fault_handler(void){
-  
+
+  int index = -1;
+  for(int i = 0; i < PAGEABLE_PAGES; i++){
+    // find a free page_map entry to allocate
+    if(page_map[i].free){
+      page_map[i].free = FALSE;
+      bzero(&page_map[i], PAGE_SIZE);
+      index = i;
+      break;
+    }
+  }
+
+  if (index == -1) {
+    int page_replaced = page_replacement_policy();
+    page_swap_out(page_replaced);
+    return;
+  }
+
+  page_swap_in(index); // Question ?? what is index? is this the index on disk?
+
+  return;
 }
 
 /* Get the sector number on disk of a process image
@@ -221,7 +262,7 @@ int get_disk_sector(page_map_entry_t * page){
 
 /* TODO: Swap i-th page in from disk (i.e. the image file) */
 void page_swap_in(int i){
-  
+   
 }
 
 /* TODO: Swap i-th page out to disk.
