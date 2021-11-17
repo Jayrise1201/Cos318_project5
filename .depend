@@ -1,0 +1,34 @@
+asmdefs.o: asmdefs.c kernel.h common.h
+createimage.o: createimage.c
+dispatch.o: dispatch.S asmsyms.h
+entry.o: entry.S asmsyms.h
+interrupt.o: interrupt.c common.h interrupt.h kernel.h keyboard.h \
+ memory.h scheduler.h util.h
+kernel.o: kernel.c common.h interrupt.h kernel.h keyboard.h mbox.h \
+ thread.h memory.h scheduler.h th.h util.h time.h usb/usb.h usb/../util.h \
+ usb/list.h usb/../interrupt.h usb/../thread.h usb/../scheduler.h \
+ usb/scsi.h
+keyboard.o: keyboard.c kernel.h common.h scheduler.h util.h mbox.h \
+ thread.h keyboard.h interrupt.h
+mbox.o: mbox.c common.h thread.h kernel.h mbox.h util.h
+memory.o: memory.c common.h kernel.h scheduler.h memory.h thread.h util.h \
+ interrupt.h tlb.h usb/scsi.h
+print.o: print.c util.h common.h print.h
+process1.o: process1.c common.h syslib.h util.h screen.h
+process2.o: process2.c common.h syslib.h util.h screen.h
+process3.o: process3.c common.h syslib.h util.h screen.h
+process4.o: process4.c common.h syslib.h util.h screen.h
+scheduler.o: scheduler.c interrupt.h kernel.h common.h scheduler.h \
+ thread.h util.h time.h
+shell.o: shell.c common.h syslib.h util.h screen.h print.h
+sleep.o: sleep.c sleep.h kernel.h common.h util.h interrupt.h scheduler.h \
+ time.h
+syslib.o: syslib.c common.h syslib.h util.h
+th1.o: th1.c kernel.h common.h scheduler.h th.h mbox.h thread.h util.h \
+ sleep.h usb/usb_hub.h usb/usb.h usb/../util.h usb/list.h \
+ usb/../interrupt.h usb/../thread.h usb/../scheduler.h usb/scsi.h
+th2.o: th2.c common.h th.h thread.h kernel.h util.h scheduler.h screen.h
+thread.o: thread.c common.h util.h thread.h kernel.h scheduler.h
+time.o: time.c time.h common.h util.h
+tlb.o: tlb.S
+util.o: util.c util.h common.h print.h

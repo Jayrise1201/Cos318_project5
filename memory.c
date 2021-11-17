@@ -50,34 +50,7 @@ uint32_t get_tab_idx(uint32_t vaddr){
 
 /* TODO: Returns physical address of page number i */
 uint32_t* page_addr(int i){
-
-  // ? is this right?
   return (uint32_t*)(MEM_START + i * PAGE_SIZE);
-
-  // page_map_entry_t page_entry = page_map[i];
-
-  // uint32_t vaddr = page_entry.vaddr;
-
-  // uint32_t dir_index = get_dir_idx(vaddr);
-
-  // uint32_t tab_index = get_tab_idx(vaddr);
-
-  // // uint32_t* dir_ptr = kernel_pdir + (sizeof(uint32_t) * dir_index);
-
-  // // uint32_t tab_ptr = *dir_ptr;
-
-  // // uint32_t page_ptr = tab_ptr +  (sizeof(uint32_t) * tab_index);
-
-  // // uint32_t page = *page_ptr;
-
-  // // similar format from set_ptab_entry_flags
-  // uint32_t dir_entry = kernel_pdir[dir_index];
-  // uint32_t tab_ptr = (uint32_t *) (dir_entry & PE_BASE_ADDR_MASK);
-  // uint32_t page = tab_ptr[tab_index];
-
-  // uint32_t physical_addr = page + (vaddr & PAGE_MASK);
-
-  // return physical_addr;
 }
 
 /* Set flags in a page table entry to 'mode' */
@@ -137,15 +110,16 @@ void insert_ptab_dir(uint32_t * dir, uint32_t *tab, uint32_t vaddr,
  * Swap out a page if no space is available. 
  */
 int page_alloc(int pinned){
+  int i;
 
-  for(int i = 0; i < PAGEABLE_PAGES; i++){
+  for(i = 0; i < PAGEABLE_PAGES; i++){
     // find a free page_map entry to allocate
     if(page_map[i].free){
       page_map[i].pinned = pinned;
       page_map[i].free = FALSE;
 
-      // zero out the memory at paddr 
-      bzero(&page_map[i], PAGE_SIZE);
+      // zero out the memory at physical addr 
+      bzero((char*)page_addr(i), PAGE_SIZE);
       return i;
     }
 
@@ -158,8 +132,8 @@ int page_alloc(int pinned){
   page_map[page_swap_index].pinned = pinned;
   page_map[page_swap_index].free = FALSE;
 
-  // zero out here too at paddr
-  bzero(&page_map[i], PAGE_SIZE);
+  // zero out here too at physical addr
+  bzero((char*)page_addr(page_swap_index), PAGE_SIZE);
   return page_swap_index;
 }
 
@@ -169,54 +143,38 @@ int page_alloc(int pinned){
  * supposed to set up the page directory and page tables for the kernel.
  */
 void init_memory(void){
-  // set kernel page directory
-  // maybe similar to page table?
-  // what should this be? 
-
-  // allocate a page
-  // then physical memory address is pdir
-  kernel_pdir = (uint32_t*)(MEM_START);
-  // should we put in page_map? is page_map physical mem??
-  page_map[0].vaddr = kernel_pdir; 
-  page_map[0].free = FALSE;
-  page_map[0].pinned = TRUE;
-
-  // setup kernel page tables
-  for(int i = 0; i < N_KERNEL_PTS; i++){
-
-    // allocate page
-    // set the physical memeory entry in array (like pdir)
-    // kernel_ptabs[i] = physical addr
-
-    // set up entry in pdir for each table (needs mode), use insert_ptab_dir
-
-
-
-    // does vaddr need to be constructed ??
-    uint32_t vaddr = MEM_START + PAGE_SIZE * (i+1);
-    uint32_t mode = 0;
-    mode |= (1 << PE_P) | (1 << PE_RW);
-
-    // page directory, page table, page data structures are same??
-    // identity map for physical and virtual for kernel??
-    init_ptab_entry(kernel_ptabs[i], vaddr, vaddr, mode); // not needed
-    // insert into page directory???
-    insert_ptab_dir(kernel_pdir, kernel_ptabs[i], vaddr, mode);
-
-    page_map[1+i].vaddr = vaddr; 
-    page_map[1+i].free = FALSE;
-    page_map[1+i].pinned = TRUE;
-  }
-
+  int i;
 
   // do at beginning of function over all page_map
-  // setup rest of page_map
-  // necessary or not?
-  for(int i = N_KERNEL_PTS+1; i < PAGEABLE_PAGES; i++){
+  for(i = 0; i < PAGEABLE_PAGES; i++){
     page_map[i].free = TRUE;
     page_map[i].pinned = FALSE;
   }
 
+  // allocate a page
+  int page_dir_index = page_alloc(TRUE);
+  // then physical memory address is pdir
+  kernel_pdir = page_addr(page_dir_index);
+  page_map[page_dir_index].vaddr = (uint32_t)kernel_pdir; 
+
+  // setup kernel page tables
+  for(i = 0; i < N_KERNEL_PTS; i++){
+
+    // allocate page
+    int page_table_index = page_alloc(TRUE);
+    // set the physical memeory entry in array (like pdir)
+    // kernel_ptabs[i] = physical addr
+    kernel_ptabs[i] = page_addr(page_table_index);
+
+    // set up entry in pdir for each table (needs mode), use insert_ptab_dir
+    uint32_t mode = 0;
+    mode |= (1 << PE_P) | (1 << PE_RW);
+    // identity map for physical and virtual for kernel
+    // insert into page directory ?? is second arg correct?
+    insert_ptab_dir(kernel_pdir, kernel_ptabs[i], (uint32_t)kernel_ptabs[i], mode);
+
+    page_map[page_table_index].vaddr = (uint32_t)kernel_ptabs[i]; 
+  }
 }
 
 
@@ -224,36 +182,44 @@ void init_memory(void){
  * user process or thread. */
 void setup_page_table(pcb_t * p){
 
-  // special case- user process will have an entry in its dir that points to kernel table
+  // kernel thread
+  if(p->is_thread){
+    // same page directory as kernel (all shared)
+    p->page_directory = kernel_pdir;
+  }
+  // user process
+  else{
+    // get a location to put a new page directory
+    int page_index = page_alloc(TRUE);
+  
+    // pcb->page_directory is a physicalal address
+    p->page_directory = page_addr(page_index);
 
-  // similar to init_memory
+    // set up two page tables for each user process 
+    // one for code and data, one for stack
 
-  // get a location to put a new page directory
-  int page_index = page_alloc(TRUE);
- 
-  // ASSUME pcb->page_directory is a physicalal address  - yes
-  p->page_directory = page_addr(page_index);
-
-  // set up two page tables for each user process 
-  // one for code and data, one for stack
-
-  // setup page tables for the page directory
-  for(int i = 0; i < N_KERNEL_PTS; i++){
-    // does vaddr need to be constructed ??
-    // vaddr PROCESS_START, PROCESS_STACK
-    uint32_t vaddr = MEM_START + PAGE_SIZE * (i+1);  /// CHECK IS THIS CORRECT ???
+    // PROCESS_START
+    // allocate a page for this table
+    page_index = page_alloc(TRUE);
+    // physical memory address
+    uint32_t* page_table_addr = page_addr(page_index);
+    uint32_t vaddr = PROCESS_START;
     uint32_t mode = 0;
     mode |= (1 << PE_P) | (1 << PE_RW);
-    // identity map for physical and virtual for kernel
-    uint32_t page_table_addr = p->page_directory + (PAGE_SIZE * (i+1));  
-    init_ptab_entry(page_table_addr, vaddr, vaddr, mode);
+    insert_ptab_dir(p->page_directory, page_table_addr, vaddr, mode);
+    page_map[page_index].vaddr = vaddr;
 
-    // insert into page directory?
-    insert_ptab_dir(kernel_pdir, kernel_ptabs[i], vaddr, mode);
 
-    page_map[1+i].vaddr = vaddr; 
-    page_map[1+i].free = FALSE;
-    page_map[1+i].pinned = TRUE;
+    // PROCESS_STACK
+    // allocate a page for this table
+    page_index = page_alloc(TRUE);
+    // physical memory address
+    page_table_addr = page_addr(page_index);
+    vaddr = PROCESS_STACK;
+    insert_ptab_dir(p->page_directory, page_table_addr, vaddr, mode);
+    page_map[page_index].vaddr = vaddr;
+
+    // special case- user process will have an entry in its dir that points to kernel table
   }
 }
 
@@ -263,26 +229,26 @@ void setup_page_table(pcb_t * p){
  */
 void page_fault_handler(void){
 
-  int index = -1;
-  for(int i = 0; i < PAGEABLE_PAGES; i++){
-    // find a free page_map entry to allocate
-    if(page_map[i].free){
-      page_map[i].free = FALSE;
-      bzero(&page_map[i], PAGE_SIZE);
-      index = i;
-      break;
-    }
-  }
+  // int index = -1;
+  // for(int i = 0; i < PAGEABLE_PAGES; i++){
+  //   // find a free page_map entry to allocate
+  //   if(page_map[i].free){
+  //     page_map[i].free = FALSE;
+  //     bzero(&page_map[i], PAGE_SIZE);
+  //     index = i;
+  //     break;
+  //   }
+  // }
 
-  if (index == -1) {
-    int page_replaced = page_replacement_policy();
-    page_swap_out(page_replaced);
-    return;
-  }
+  // if (index == -1) {
+  //   int page_replaced = page_replacement_policy();
+  //   page_swap_out(page_replaced);
+  //   return;
+  // }
 
-  page_swap_in(index); // Question ?? what is index? is this the index on disk?
+  // page_swap_in(index); // Question ?? what is index? is this the index on disk?
 
-  return;
+  // return;
 }
 
 /* Get the sector number on disk of a process image

@@ -51,7 +51,8 @@ enum {
 typedef struct {
 	uint32_t	swap_loc;
 	uint32_t	vaddr;
-  // swap size
+  // added
+  uint32_t swap_size;
 	bool_t free;
   bool_t pinned;
 } page_map_entry_t;
