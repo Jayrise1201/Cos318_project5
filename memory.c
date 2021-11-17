@@ -124,7 +124,7 @@ int page_alloc(int pinned){
     }
 
   }
-
+  ASSERT(FALSE);
   // nothing available in page_map so swap out
   int page_swap_index = page_replacement_policy();
   page_swap_out(page_swap_index);
@@ -171,7 +171,7 @@ void init_memory(void){
     mode |= (1 << PE_P) | (1 << PE_RW);
     // identity map for physical and virtual for kernel
     // insert into page directory ?? is second arg correct?
-    insert_ptab_dir(kernel_pdir, kernel_ptabs[i], (uint32_t)kernel_ptabs[i], mode);
+    insert_ptab_dir(kernel_pdir, kernel_ptabs[i], *kernel_ptabs[i], mode);
 
     page_map[page_table_index].vaddr = (uint32_t)kernel_ptabs[i]; 
   }
@@ -189,6 +189,7 @@ void setup_page_table(pcb_t * p){
   }
   // user process
   else{
+    ASSERT(FALSE);
     // get a location to put a new page directory
     int page_index = page_alloc(TRUE);
   

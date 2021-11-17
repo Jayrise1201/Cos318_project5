@@ -13,6 +13,7 @@
 #include "sleep.h"
 #include "usb/usb_hub.h"
 #include "usb/scsi.h"
+#include "util.h"
 
 #define MHZ 2000 /* CPU clock rate */
 
@@ -45,6 +46,8 @@ void clock_thread(void)
 {
   unsigned int time;
   unsigned long long ticks, start_ticks;
+  
+  scrprintf(20,20, "HELLOHELLOHELLOHELLOHELLOHELLO");
 
   start_ticks = get_timer() >> 20;
   while (1) {
