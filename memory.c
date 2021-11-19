@@ -35,6 +35,7 @@ static uint32_t *kernel_pdir;
 static uint32_t *kernel_ptabs[N_KERNEL_PTS];
 
 //other global variables...
+static lock_t lock;
 
 /* Main API */
 
@@ -145,6 +146,8 @@ void init_memory(void){
   int i;
   uint32_t temp_mem;
 
+  lock_init(&lock);
+
   // do at beginning of function over all page_map
   for(i = 0; i < PAGEABLE_PAGES; i++){
     page_map[i].free = TRUE;
@@ -206,7 +209,7 @@ void setup_page_table(pcb_t * p){
     // get a location to put a new page directory
     int page_index = page_alloc(TRUE);
   
-    // pcb->page_directory is a physicalal address
+    // pcb->page_directory is a physical address
     p->page_directory = page_addr(page_index);
 
     // PROCESS_START
@@ -232,12 +235,10 @@ void setup_page_table(pcb_t * p){
     page_map[page_index].vaddr = vaddr;
 
     int i; 
-    for(i=0; i< N_PROCESS_STACK_PAGES; i++) {
+    for(i = 0; i < N_PROCESS_STACK_PAGES; i++) {
       
       page_index = page_alloc(TRUE);
-      
-      // **************************************************** Here ?? minus?
-      vaddr = PROCESS_STACK - (PAGE_SIZE * (i+1));
+      vaddr = PROCESS_STACK - (PAGE_SIZE * (i));
 
       init_ptab_entry(page_table_addr, vaddr, (uint32_t) page_addr(page_index),mode);
       
@@ -254,18 +255,17 @@ void setup_page_table(pcb_t * p){
  * Should handle demand paging.
  */
 void page_fault_handler(void){
+  lock_acquire(&lock);
 
   uint32_t* page_dir = current_running->page_directory;
   uint32_t vaddr = current_running->fault_addr;
 
-  // get directory index and table index from fault addr
+  // get directory index from fault addr
   uint32_t dir_idx = get_dir_idx((uint32_t) vaddr);
-  // uint32_t tab_idx = get_tab_idx((uint32_t) vaddr);
 
   uint32_t dir_entry = page_dir[dir_idx];
   ASSERT(dir_entry & PE_P); /* dir entry present */
   uint32_t *tab = (uint32_t *) (dir_entry & PE_BASE_ADDR_MASK);
-  // uint32_t entry = tab[tab_idx];
 
   // allocate a page 
   int page_index = page_alloc(FALSE);
@@ -280,8 +280,10 @@ void page_fault_handler(void){
   // physical address is the newly allocated page
   // update page table
   uint32_t mode = 0;
-  mode |= PE_P | PE_RW;
+  mode |= PE_P | PE_RW | PE_US;
   init_ptab_entry(tab, vaddr, (uint32_t)page_addr(page_index), mode);
+
+  lock_release(&lock);
 }
 
 /* Get the sector number on disk of a process image
@@ -294,11 +296,16 @@ int get_disk_sector(page_map_entry_t * page){
 /* TODO: Swap i-th page in from disk (i.e. the image file) */
 void page_swap_in(int i) {
 
+  // min(swap_size + swap_loc - get_disk_sector, 8)
+  int block_count = SECTORS_PER_PAGE;
+  int disk_sector = get_disk_sector(&page_map[i]);
+  int sectors = current_running->swap_size + current_running->swap_loc - disk_sector;
+  if(sectors < block_count){
+    block_count = sectors;
+  }
+
   // read page from disk into respective page at physical memory 
-  scsi_read(get_disk_sector(&page_map[i]), 8, (char *) page_addr(i));
-  
-  // flush current running fault address
-  flush_tlb_entry(current_running->fault_addr);
+  scsi_read(disk_sector, block_count, (char *) page_addr(i));
 }
 
 /* TODO: Swap i-th page out to disk.
