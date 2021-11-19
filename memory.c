@@ -124,7 +124,6 @@ int page_alloc(int pinned){
     }
 
   }
-  ASSERT(FALSE);
   // nothing available in page_map so swap out
   int page_swap_index = page_replacement_policy();
   page_swap_out(page_swap_index);
@@ -144,6 +143,7 @@ int page_alloc(int pinned){
  */
 void init_memory(void){
   int i;
+  uint32_t temp_mem;
 
   // do at beginning of function over all page_map
   for(i = 0; i < PAGEABLE_PAGES; i++){
@@ -168,13 +168,24 @@ void init_memory(void){
 
     // set up entry in pdir for each table (needs mode), use insert_ptab_dir
     uint32_t mode = 0;
-    mode |= (1 << PE_P) | (1 << PE_RW);
+    mode |= PE_P;
     // identity map for physical and virtual for kernel
     // insert into page directory ?? is second arg correct?
-    insert_ptab_dir(kernel_pdir, kernel_ptabs[i], *kernel_ptabs[i], mode);
+    insert_ptab_dir(kernel_pdir, kernel_ptabs[i], (uint32_t)kernel_ptabs[i], mode);
 
     page_map[page_table_index].vaddr = (uint32_t)kernel_ptabs[i]; 
   }
+  // map in all of 0-MAX PHYSICAL MEMORY
+  for(temp_mem = 0; temp_mem < MAX_PHYSICAL_MEMORY; temp_mem += PAGE_SIZE){
+    uint32_t mode = 0;
+    mode |= PE_P;
+    init_ptab_entry(kernel_ptabs[0], temp_mem, temp_mem, mode);
+  }
+
+  // screen address page
+  uint32_t mode = 0;
+  mode |= PE_P | PE_RW | PE_US;
+  set_ptab_entry_flags(kernel_pdir, SCREEN_ADDR, mode);
 }
 
 
@@ -189,7 +200,6 @@ void setup_page_table(pcb_t * p){
   }
   // user process
   else{
-    ASSERT(FALSE);
     // get a location to put a new page directory
     int page_index = page_alloc(TRUE);
   
@@ -206,7 +216,7 @@ void setup_page_table(pcb_t * p){
     uint32_t* page_table_addr = page_addr(page_index);
     uint32_t vaddr = PROCESS_START;
     uint32_t mode = 0;
-    mode |= (1 << PE_P) | (1 << PE_RW);
+    mode |= PE_P | PE_RW;
     insert_ptab_dir(p->page_directory, page_table_addr, vaddr, mode);
     page_map[page_index].vaddr = vaddr;
 
@@ -229,27 +239,36 @@ void setup_page_table(pcb_t * p){
  * Should handle demand paging.
  */
 void page_fault_handler(void){
+  // int i, j;
 
-  // int index = -1;
-  // for(int i = 0; i < PAGEABLE_PAGES; i++){
-  //   // find a free page_map entry to allocate
-  //   if(page_map[i].free){
-  //     page_map[i].free = FALSE;
-  //     bzero(&page_map[i], PAGE_SIZE);
-  //     index = i;
-  //     break;
+  // uint32_t* page_dir = current_running->page_directory;
+
+  // // search all entries in directory
+  // for(i = 0; i < PAGE_N_ENTRIES; i++){
+  //   uint32_t dir_entry = page_dir[i];
+  //   // make sure present
+  //   if(dir_entry & PE_P){
+  //     uint32_t *tab = (uint32_t*)(dir_entry * PE_BASE_ADDR_MASK);
+  //     // search all entries in table
+  //     for(j = 0; j < PAGE_N_ENTRIES; j++){
+  //       uint32_t entry = tab[j];
+  //       // not present means the faulting page
+  //       if(entry & PE_P == FALSE){
+  //         // allocate a page 
+  //         int page_index = page_alloc(FALSE);
+  //         // load contents from USB disk
+  //         // swap location and fault addr??
+  //         page_swap_in(); // Question ?? what is index? is this the index on disk?
+
+  //         // update page table
+  //         uint32_t mode = 0;
+  //         mode |= PE_P | PE_RW;
+  //         // vaddr is same as before? 
+  //         init_ptab_entry(tab, vaddr, page_addr(page_index), mode);
+  //       }
+  //     }
   //   }
   // }
-
-  // if (index == -1) {
-  //   int page_replaced = page_replacement_policy();
-  //   page_swap_out(page_replaced);
-  //   return;
-  // }
-
-  // page_swap_in(index); // Question ?? what is index? is this the index on disk?
-
-  // return;
 }
 
 /* Get the sector number on disk of a process image
@@ -261,7 +280,9 @@ int get_disk_sector(page_map_entry_t * page){
 
 /* TODO: Swap i-th page in from disk (i.e. the image file) */
 void page_swap_in(int i){
-   
+  // char* data;
+  // scsi_read(get_disk_sector(&page_map[i]), current_running->swap_size, data);
+  // flush_tlb_entry(vaddr);
 }
 
 /* TODO: Swap i-th page out to disk.
@@ -271,11 +292,23 @@ void page_swap_in(int i){
  * 
  */
 void page_swap_out(int i){
-  
+  // scsi_write(get_disk_sector(&page_map[i], page_map[i].swap_size, *page_addr(i)));
 }
 
 
 /* TODO: Decide which page to replace, return the page number  */
 int page_replacement_policy(void){
- 
+ int i;
+ int non_pinned_index; 
+
+ for(i = 0; i < PAGEABLE_PAGES; i++){
+   if(page_map[i].free){
+     return i;
+   }
+   if(!page_map[i].pinned){
+     non_pinned_index = i;
+   }
+ }
+
+ return non_pinned_index;
 }

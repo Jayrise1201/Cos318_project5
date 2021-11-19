@@ -6,7 +6,7 @@
 
 ###################### DEBUGGING ###############################
 # Uncomment this line to enable debugging with gdb.
-# gdbstub: enabled=1, port=1234
+#gdbstub: enabled=1, port=1234
 #
 # Start gdb, then do
 #  (gdb) target remote localhost:1234
