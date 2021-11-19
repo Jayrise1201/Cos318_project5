@@ -55,7 +55,7 @@ static int next_stack = STACK_MIN;
  * kernel.
  */
 static func_t start_addr[NUM_THREADS] = {
-  //(func_t) loader_thread,  /* Loads shell */
+  (func_t) loader_thread,  /* Loads shell */
   (func_t) clock_thread,  /* Running indefinitely */
   (func_t) usb_thread, /* Scans USB hub port */
   (func_t) thread2,  /* Test thread */

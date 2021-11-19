@@ -55,7 +55,7 @@ enum {
    * when adding to or removing elements from the start_addr array.
    */
    // EDITED
-  NUM_THREADS = 4,
+  NUM_THREADS = 5,
 
   /* Number of pcbs the OS supports */
   PCB_TABLE_SIZE = 128,
