@@ -237,7 +237,7 @@ void setup_page_table(pcb_t * p){
       page_index = page_alloc(TRUE);
       
       // **************************************************** Here ?? minus?
-      vaddr = PROCESS_STACK - (PAGE_SIZE * (i-1));
+      vaddr = PROCESS_STACK - (PAGE_SIZE * (i+1));
 
       init_ptab_entry(page_table_addr, vaddr, (uint32_t) page_addr(page_index),mode);
       
@@ -254,38 +254,34 @@ void setup_page_table(pcb_t * p){
  * Should handle demand paging.
  */
 void page_fault_handler(void){
-  int i, j;
 
   uint32_t* page_dir = current_running->page_directory;
+  uint32_t vaddr = current_running->fault_addr;
 
-  // search all entries in directory
-  for(i = 0; i < PAGE_N_ENTRIES; i++){
+  // get directory index and table index from fault addr
+  uint32_t dir_idx = get_dir_idx((uint32_t) vaddr);
+  // uint32_t tab_idx = get_tab_idx((uint32_t) vaddr);
 
-    uint32_t dir_entry = page_dir[i];
-    // make sure present
-    if(dir_entry & PE_P){
-      uint32_t *tab = (uint32_t*)(dir_entry & PE_BASE_ADDR_MASK);
-      // search all entries in table
-      for(j = 0; j < PAGE_N_ENTRIES; j++){
-        uint32_t entry = tab[j];
-        // not present means the faulting page
-        if(!(entry & PE_P)){ // found page here
-          // allocate a page 
-          int page_index = page_alloc(FALSE);
-          // load contents from USB disk
-          // swap location and fault addr??
-          page_swap_in(page_index); // Question ?? what is index? is this the index on disk?
+  uint32_t dir_entry = page_dir[dir_idx];
+  ASSERT(dir_entry & PE_P); /* dir entry present */
+  uint32_t *tab = (uint32_t *) (dir_entry & PE_BASE_ADDR_MASK);
+  // uint32_t entry = tab[tab_idx];
 
-          // update page table
-          uint32_t mode = 0;
-          mode |= PE_P | PE_RW;
+  // allocate a page 
+  int page_index = page_alloc(FALSE);
+  // set page map entry
+  page_map[page_index].vaddr = vaddr;
+  page_map[page_index].swap_loc = current_running->swap_loc;
+  page_map[page_index].swap_size = current_running->swap_size;
+  // load contents from disk
+  page_swap_in(page_index);
 
-          // vaddr is same as before? 
-          init_ptab_entry(tab, current_running->fault_addr, (uint32_t)page_addr(page_index), mode);
-        }
-      }
-    }
-  }
+  // vaddr is the faulting address
+  // physical address is the newly allocated page
+  // update page table
+  uint32_t mode = 0;
+  mode |= PE_P | PE_RW;
+  init_ptab_entry(tab, vaddr, (uint32_t)page_addr(page_index), mode);
 }
 
 /* Get the sector number on disk of a process image
