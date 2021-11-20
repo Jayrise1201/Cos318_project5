@@ -226,7 +226,7 @@ void init_memory(void){
 /* TODO: Set up a page directory and page table for a new 
  * user process or thread. */
 void setup_page_table(pcb_t * p){
-
+  lock_acquire(&lock);
   // kernel thread
   if(p->is_thread){
     // same page directory as kernel (all shared)
@@ -269,7 +269,7 @@ void setup_page_table(pcb_t * p){
     for(i = 0; i < N_PROCESS_STACK_PAGES; i++) {
       
       page_index = page_alloc(TRUE);
-      vaddr = PROCESS_STACK - (PAGE_SIZE * (i));
+      vaddr = PROCESS_STACK - (PAGE_SIZE * (i));  // here
 
       init_ptab_entry(page_table_addr, vaddr, (uint32_t) page_addr(page_index),mode);
       
@@ -277,8 +277,10 @@ void setup_page_table(pcb_t * p){
 
     // special case- user process will have an entry in its dir that points to kernel table
     insert_ptab_dir(p->page_directory,kernel_ptabs[0], (uint32_t) kernel_ptabs[0], mode);
-  
   }
+
+  lock_release(&lock);
+
 }
 
 /* TODO: Swap into a free page upon a page fault.
@@ -330,7 +332,8 @@ void page_swap_in(int i) {
   }
 
   // read page from disk into respective page at physical memory 
-  scsi_read(disk_sector, block_count, (char *) page_addr(i));
+  int check  = scsi_read(disk_sector, block_count, (char *) page_addr(i));
+  ASSERT(check == 0);
 }
 
 /* TODO: Swap i-th page out to disk.
@@ -349,27 +352,29 @@ void page_swap_out(int i){
   uint32_t dir_entry = page_dir[dir_idx];
 
   // get table index and table entry
-  uint32_t *tab = (uint32_t *) (dir_entry & PE_BASE_ADDR_MASK); 
+  uint32_t *tab = (uint32_t *) (dir_entry & PE_BASE_ADDR_MASK);
   uint32_t tab_idx = get_tab_idx((uint32_t) vaddr);
   uint32_t entry = tab[tab_idx];
 
+  
+  // set to not present and not dirty
+  uint32_t mode = entry & MODE_MASK; 
+  mode &= (~PE_P);
+  set_ptab_entry_flags(page_dir, vaddr, mode);
+
+
   // only write back if dirty
-  if(entry & PE_D){
+  if(entry & MODE_MASK & PE_D){
     // min(swap_size + swap_loc - get_disk_sector, 8)
     int block_count = SECTORS_PER_PAGE;
     int disk_sector = get_disk_sector(&page_map[i]);
-    int sectors = current_running->swap_size + current_running->swap_loc - disk_sector;
+    int sectors = page_map[i].swap_size + page_map[i].swap_loc - disk_sector;
     if(sectors < block_count){
       block_count = sectors;
     }
     scsi_write(disk_sector, block_count, (char *) page_addr(i));
   }
 
-  // set to not present and not dirty
-  uint32_t mode = entry & MODE_MASK; 
-  mode &= (~PE_P) & (~PE_D);
-  set_ptab_entry_flags(page_dir, vaddr, mode);
-  
 }
 
 
