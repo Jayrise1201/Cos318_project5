@@ -1,4 +1,4 @@
-/* Author(s): <Your name here>
+/* Author(s): Austin Li, Jayson Badal
  * COS 318, Fall 2019: Project 5 Virtual Memory
  * Defines the memory manager for the kernel.
 */

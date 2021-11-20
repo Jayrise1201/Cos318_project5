@@ -1,4 +1,4 @@
-/* Author(s): <Your name here>
+/* Author(s): Austin Li, Jayson Badal 
  * COS 318, Fall 2019: Project 5 Virtual Memory
  * Implementation of the memory manager for the kernel.
 */
@@ -287,17 +287,13 @@ void setup_page_table(pcb_t * p){
  */
 void page_fault_handler(void){
   lock_acquire(&lock);
-
   uint32_t* page_dir = current_running->page_directory;
   uint32_t vaddr = current_running->fault_addr;
-
   // get directory index from fault addr
   uint32_t dir_idx = get_dir_idx((uint32_t) vaddr);
-
   uint32_t dir_entry = page_dir[dir_idx];
-  ASSERT(dir_entry & PE_P); /* dir entry present */
+  //ASSERT(dir_entry & PE_P); /* dir entry present */
   uint32_t *tab = (uint32_t *) (dir_entry & PE_BASE_ADDR_MASK);
-
   // allocate a page 
   int page_index = page_alloc(FALSE);
   // set page map entry
@@ -306,14 +302,12 @@ void page_fault_handler(void){
   page_map[page_index].swap_size = current_running->swap_size;
   // load contents from disk
   page_swap_in(page_index);
-
   // vaddr is the faulting address
   // physical address is the newly allocated page
   // update page table
   uint32_t mode = 0;
   mode |= PE_P | PE_RW | PE_US;
   init_ptab_entry(tab, vaddr, (uint32_t)page_addr(page_index), mode);
-
   lock_release(&lock);
 }
 
@@ -381,6 +375,9 @@ void page_swap_out(int i){
 
 /* TODO: Decide which page to replace, return the page number  */
 int page_replacement_policy(void){
+  if (q.size == 0) {
+    ASSERT(FALSE);
+  }
   int page_replace_index = q.pages[q.tail];
   // update queue
   q.size--;
