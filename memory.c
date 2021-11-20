@@ -37,6 +37,16 @@ static uint32_t *kernel_ptabs[N_KERNEL_PTS];
 //other global variables...
 static lock_t lock;
 
+// queue for FIFO page replacement policy
+struct queue {
+  int pages[PAGEABLE_PAGES];
+  int head;
+  int tail;
+  int size;
+};
+// queue of pages in FIFO order to be replaced
+static struct queue q; 
+
 /* Main API */
 
 /* Use virtual address to get index in page directory. */
@@ -121,6 +131,14 @@ int page_alloc(int pinned){
 
       // zero out the memory at physical addr 
       bzero((char*)page_addr(i), PAGE_SIZE);
+
+      // page replacement policy queue
+      if(!pinned){
+        q.pages[q.head] = i;
+        q.size++;
+        q.head = (q.head + 1) % PAGEABLE_PAGES;
+      }
+
       return i;
     }
 
@@ -134,6 +152,14 @@ int page_alloc(int pinned){
 
   // zero out here too at physical addr
   bzero((char*)page_addr(page_swap_index), PAGE_SIZE);
+
+  // page replacement policy queue
+  if(!pinned){
+    q.pages[q.head] = page_swap_index;
+    q.size++;
+    q.head = (q.head + 1) % PAGEABLE_PAGES;
+  }
+
   return page_swap_index;
 }
 
@@ -146,7 +172,12 @@ void init_memory(void){
   int i;
   uint32_t temp_mem;
 
+  // inititalize lock
   lock_init(&lock);
+  // initialize queue
+  q.head = 0;
+  q.tail = 0;
+  q.size = 0;
 
   // do at beginning of function over all page_map
   for(i = 0; i < PAGEABLE_PAGES; i++){
@@ -315,23 +346,45 @@ void page_swap_in(int i) {
  * 
  */
 void page_swap_out(int i){
-  // scsi_write(get_disk_sector(&page_map[i], page_map[i].swap_size, *page_addr(i)));
+
+  // find in table
+  uint32_t* page_dir = current_running->page_directory;
+  uint32_t vaddr = page_map[i].vaddr;
+  // get directory index and entry
+  uint32_t dir_idx = get_dir_idx((uint32_t) vaddr);
+  uint32_t dir_entry = page_dir[dir_idx];
+
+  // get table index and table entry
+  uint32_t *tab = (uint32_t *) (dir_entry & PE_BASE_ADDR_MASK); 
+  uint32_t tab_idx = get_tab_idx((uint32_t) vaddr);
+  uint32_t entry = tab[tab_idx];
+
+  // only write back if dirty
+  if(entry & PE_D){
+    // min(swap_size + swap_loc - get_disk_sector, 8)
+    int block_count = SECTORS_PER_PAGE;
+    int disk_sector = get_disk_sector(&page_map[i]);
+    int sectors = current_running->swap_size + current_running->swap_loc - disk_sector;
+    if(sectors < block_count){
+      block_count = sectors;
+    }
+    scsi_write(disk_sector, block_count, (char *) page_addr(i));
+  }
+
+  // set to not present and not dirty
+  uint32_t mode = entry & MODE_MASK; 
+  mode &= (~PE_P) & (~PE_D);
+  set_ptab_entry_flags(page_dir, vaddr, mode);
+  
 }
 
 
 /* TODO: Decide which page to replace, return the page number  */
 int page_replacement_policy(void){
-//  int i;
-//  int non_pinned_index; 
-
-//  for(i = 0; i < PAGEABLE_PAGES; i++){
-//    if(page_map[i].free){
-//      return i;
-//    }
-//    if(!page_map[i].pinned){
-//      non_pinned_index = i;
-//    }
-//  }
-
-//  return non_pinned_index;
+  int page_replace_index = q.pages[q.tail];
+  // update queue
+  q.size--;
+  q.tail = (q.tail + 1) % PAGEABLE_PAGES;
+  
+  return page_replace_index;
 }
