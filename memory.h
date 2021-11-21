@@ -51,8 +51,10 @@ enum {
 typedef struct {
 	uint32_t	swap_loc;
 	uint32_t	vaddr;
-  // added
+  // added 
   uint32_t swap_size;
+  // the page directory associated with the page_map_entry (physical address)
+  uint32_t *pdir;
 	bool_t free;
   bool_t pinned;
 } page_map_entry_t;

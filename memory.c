@@ -143,6 +143,7 @@ int page_alloc(int pinned){
     }
 
   }
+
   // nothing available in page_map so swap out
   int page_swap_index = page_replacement_policy();
   page_swap_out(page_swap_index);
@@ -190,6 +191,7 @@ void init_memory(void){
   // then physical memory address is pdir
   kernel_pdir = page_addr(page_dir_index);
   page_map[page_dir_index].vaddr = (uint32_t)kernel_pdir; 
+  page_map[page_dir_index].pdir = kernel_pdir;
 
   // setup kernel page tables
   for(i = 0; i < N_KERNEL_PTS; i++){
@@ -207,7 +209,8 @@ void init_memory(void){
     // insert into page directory ?? is second arg correct?
     insert_ptab_dir(kernel_pdir, kernel_ptabs[i], (uint32_t)kernel_ptabs[i], mode);
 
-    page_map[page_table_index].vaddr = (uint32_t)kernel_ptabs[i]; 
+    page_map[page_table_index].vaddr = (uint32_t)kernel_ptabs[i];
+    page_map[page_table_index].pdir = kernel_pdir;
   }
   // map in all of 0-MAX PHYSICAL MEMORY
   for(temp_mem = 0; temp_mem < MAX_PHYSICAL_MEMORY; temp_mem += PAGE_SIZE){
@@ -255,6 +258,7 @@ void setup_page_table(pcb_t * p){
 
     insert_ptab_dir(p->page_directory, page_table_addr, vaddr, mode);
     page_map[page_index].vaddr = vaddr;
+    page_map[page_index].pdir = p->page_directory;
 
     // PROCESS_STACK
     // allocate a page for this table
@@ -264,6 +268,7 @@ void setup_page_table(pcb_t * p){
     vaddr = PROCESS_STACK;
     insert_ptab_dir(p->page_directory, page_table_addr, vaddr, mode);
     page_map[page_index].vaddr = vaddr;
+    page_map[page_index].pdir = p->page_directory;
 
     int i; 
     for(i = 0; i < N_PROCESS_STACK_PAGES; i++) {
@@ -289,12 +294,15 @@ void setup_page_table(pcb_t * p){
  */
 void page_fault_handler(void){
   lock_acquire(&lock);
+  // increment page fault count
+  current_running->page_fault_count++;
+
   uint32_t* page_dir = current_running->page_directory;
   uint32_t vaddr = current_running->fault_addr;
   // get directory index from fault addr
   uint32_t dir_idx = get_dir_idx((uint32_t) vaddr);
   uint32_t dir_entry = page_dir[dir_idx];
-  //ASSERT(dir_entry & PE_P); /* dir entry present */
+  ASSERT(dir_entry & PE_P); /* dir entry present */
   uint32_t *tab = (uint32_t *) (dir_entry & PE_BASE_ADDR_MASK);
   // allocate a page 
   int page_index = page_alloc(FALSE);
@@ -302,6 +310,7 @@ void page_fault_handler(void){
   page_map[page_index].vaddr = vaddr;
   page_map[page_index].swap_loc = current_running->swap_loc;
   page_map[page_index].swap_size = current_running->swap_size;
+  page_map[page_index].pdir = page_dir;
   // load contents from disk
   page_swap_in(page_index);
   // vaddr is the faulting address
@@ -345,11 +354,12 @@ void page_swap_in(int i) {
 void page_swap_out(int i){
 
   // find in table
-  uint32_t* page_dir = current_running->page_directory;
   uint32_t vaddr = page_map[i].vaddr;
+  uint32_t* page_dir = page_map[i].pdir;
   // get directory index and entry
   uint32_t dir_idx = get_dir_idx((uint32_t) vaddr);
   uint32_t dir_entry = page_dir[dir_idx];
+  ASSERT(dir_entry & PE_P); /* dir entry present */
 
   // get table index and table entry
   uint32_t *tab = (uint32_t *) (dir_entry & PE_BASE_ADDR_MASK);
@@ -372,17 +382,18 @@ void page_swap_out(int i){
     if(sectors < block_count){
       block_count = sectors;
     }
-    scsi_write(disk_sector, block_count, (char *) page_addr(i));
+    int check = scsi_write(disk_sector, block_count, (char *) page_addr(i));
+    ASSERT(check == 0);
   }
+
+  flush_tlb_entry(vaddr);
 
 }
 
 
 /* TODO: Decide which page to replace, return the page number  */
 int page_replacement_policy(void){
-  if (q.size == 0) {
-    ASSERT(FALSE);
-  }
+  ASSERT(q.size > 0);
   int page_replace_index = q.pages[q.tail];
   // update queue
   q.size--;
