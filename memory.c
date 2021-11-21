@@ -274,7 +274,7 @@ void setup_page_table(pcb_t * p){
     for(i = 0; i < N_PROCESS_STACK_PAGES; i++) {
       
       page_index = page_alloc(TRUE);
-      vaddr = PROCESS_STACK - (PAGE_SIZE * (i));  // here
+      vaddr = PROCESS_STACK - (PAGE_SIZE * (i));
 
       init_ptab_entry(page_table_addr, vaddr, (uint32_t) page_addr(page_index),mode);
       
@@ -385,9 +385,6 @@ void page_swap_out(int i){
     int check = scsi_write(disk_sector, block_count, (char *) page_addr(i));
     ASSERT(check == 0);
   }
-
-  flush_tlb_entry(vaddr);
-
 }
 
 
